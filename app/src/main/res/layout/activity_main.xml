@@ -16,7 +16,17 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- Search bar at the top -->
+    <!-- MapboxManeuverView now positioned at the top -->
+    <com.mapbox.navigation.ui.components.maneuver.view.MapboxManeuverView
+        android:id="@+id/maneuverView"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_margin="4dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- Search bar below the ManeuverView - Updated to AutoCompleteTextView -->
     <androidx.cardview.widget.CardView
         android:id="@+id/searchCardView"
         android:layout_width="0dp"
@@ -28,18 +38,29 @@
         app:cardElevation="4dp"
         app:layout_constraintEnd_toStartOf="@+id/profileButton"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent">
+        app:layout_constraintTop_toBottomOf="@+id/maneuverView">
 
-        <androidx.appcompat.widget.SearchView
-            android:id="@+id/searchView"
+        <androidx.appcompat.widget.AppCompatAutoCompleteTextView
+            android:id="@+id/searchEditText"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
             android:background="@android:color/transparent"
-            android:iconifiedByDefault="false"
-            android:queryHint="Search..." />
+            android:hint="Search..."
+            android:padding="12dp"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:textColorHint="#757575"
+            android:textSize="16sp"
+            android:drawableStart="@drawable/search_icon"
+            android:drawablePadding="8dp"
+            android:imeOptions="actionSearch"
+            android:inputType="text"
+            android:maxLines="1"
+            android:singleLine="true"
+            android:dropDownAnchor="@id/searchCardView" />
     </androidx.cardview.widget.CardView>
 
-    <!-- Profile button -->
+    <!-- Profile button aligned with search bar but below ManeuverView -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/profileButton"
         android:layout_width="wrap_content"
@@ -52,11 +73,23 @@
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintTop_toTopOf="@+id/searchCardView"
         app:srcCompat="@drawable/user_icon"
-        app:tint="@null"
-        />
+        app:tint="@null" />
 
+    <!-- Stop Navigation Button (NEW) -->
+    <com.google.android.material.floatingactionbutton.FloatingActionButton
+        android:id="@+id/stopNavigationButton"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="16dp"
+        android:contentDescription="Stop navigation"
+        app:backgroundTint="#292D32"
+        app:layout_constraintBottom_toTopOf="@+id/markButton"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:srcCompat="@drawable/stop_navigation_icon"
+        app:tint="@null" />
 
-    <!-- Bottom action buttons -->
+    <!-- Bottom action buttons (unchanged) -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/markButton"
         android:layout_width="wrap_content"
@@ -68,8 +101,7 @@
         app:layout_constraintBottom_toTopOf="@+id/locationButton"
         app:layout_constraintEnd_toEndOf="parent"
         app:srcCompat="@drawable/location_marker_icon"
-        app:tint="@null"
-        />
+        app:tint="@null" />
 
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/locationButton"
@@ -82,7 +114,6 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:srcCompat="@drawable/my_current_location"
-        app:tint="@null"
-        />
+        app:tint="@null" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
