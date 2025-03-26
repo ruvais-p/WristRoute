@@ -116,7 +116,7 @@ class MainActivity : ComponentActivity(), PermissionsListener {
             @SuppressLint("MissingPermission")
             override fun onAttached(mapboxNavigation: MapboxNavigation) {
                 // Register observers when navigation is attached
-                mapboxNavigation.startTripSession()
+                mapboxNavigation.startTripSession(withForegroundService = false)
 
                 // Register RouteProgressObserver to detect route progress changes
                 mapboxNavigation.registerRouteProgressObserver(routeProgressObserver)
