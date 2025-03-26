@@ -1,6 +1,10 @@
 package com.example.watchmap
 
 import android.annotation.SuppressLint
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.View
@@ -57,6 +61,24 @@ import com.mapbox.navigation.ui.maps.camera.NavigationCamera
 import com.mapbox.navigation.ui.maps.camera.data.MapboxNavigationViewportDataSource
 import com.mapbox.navigation.ui.maps.route.arrow.model.InvalidPointError
 import com.mapbox.navigation.ui.maps.route.arrow.model.UpdateManeuverArrowValue
+import android.text.Editable
+import android.text.TextWatcher
+import android.view.inputmethod.InputMethodManager
+import android.widget.AutoCompleteTextView
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.view.isVisible
+import androidx.lifecycle.lifecycleScope
+import com.mapbox.maps.CameraOptions
+import com.mapbox.search.autofill.AddressAutofill
+import com.mapbox.search.autofill.AddressAutofillOptions
+import com.mapbox.search.autofill.AddressAutofillResult
+import com.mapbox.search.autofill.AddressAutofillSuggestion
+import com.mapbox.search.autofill.Query
+import com.mapbox.search.ui.adapter.autofill.AddressAutofillUiAdapter
+import com.mapbox.search.ui.view.CommonSearchViewConfiguration
+import com.mapbox.search.ui.view.DistanceUnitType
+import com.mapbox.search.ui.view.SearchResultsView
 
 class MainActivity : ComponentActivity(), PermissionsListener {
     private lateinit var mapView: MapView
@@ -69,6 +91,13 @@ class MainActivity : ComponentActivity(), PermissionsListener {
     private lateinit var maneuverView: MapboxManeuverView
     private lateinit var viewportDataSource: MapboxNavigationViewportDataSource
     private lateinit var navigationCamera: NavigationCamera
+
+    private lateinit var addressAutofill: AddressAutofill
+    private lateinit var searchResultsView: SearchResultsView
+    private lateinit var addressAutofillUiAdapter: AddressAutofillUiAdapter
+    private lateinit var searchEditText: AutoCompleteTextView
+    private var ignoreNextQueryTextUpdate: Boolean = false
+
     private var destinationPoint: Point? = null
     private var destinationMarker: CircleAnnotationManager? = null
     private var originPoint: Point? = null
@@ -311,6 +340,13 @@ class MainActivity : ComponentActivity(), PermissionsListener {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        // Initialize address autofill
+        addressAutofill = AddressAutofill.create()
+
+        // Initialize search views
+        searchEditText = findViewById(R.id.searchEditText)
+        searchResultsView = findViewById(R.id.search_results_view)
+
         // Initialize views
         mapView = findViewById(R.id.mapView)
         locationButton = findViewById(R.id.locationButton)
@@ -320,6 +356,49 @@ class MainActivity : ComponentActivity(), PermissionsListener {
         searchCardView = findViewById(R.id.searchCardView)
         maneuverView = findViewById(R.id.maneuverView)
 
+        searchResultsView.initialize(
+            SearchResultsView.Configuration(
+                commonConfiguration = CommonSearchViewConfiguration(DistanceUnitType.IMPERIAL)
+            )
+        )
+
+        addressAutofillUiAdapter = AddressAutofillUiAdapter(
+            view = searchResultsView,
+            addressAutofill = addressAutofill
+        )
+
+        // Set up search text listener
+        searchEditText.addTextChangedListener(object : TextWatcher {
+            override fun onTextChanged(text: CharSequence, start: Int, before: Int, count: Int) {
+                if (ignoreNextQueryTextUpdate) {
+                    ignoreNextQueryTextUpdate = false
+                    return
+                }
+
+                val query = Query.create(text.toString())
+                if (query != null) {
+                    lifecycleScope.launchWhenStarted {
+                        addressAutofillUiAdapter.search(query)
+                    }
+                }
+                searchResultsView.isVisible = query != null
+            }
+
+            override fun beforeTextChanged(s: CharSequence, start: Int, count: Int, after: Int) {}
+            override fun afterTextChanged(s: Editable) {}
+        })
+
+        // Set up address autofill selection listener
+        addressAutofillUiAdapter.addSearchListener(object : AddressAutofillUiAdapter.SearchListener {
+            override fun onSuggestionSelected(suggestion: AddressAutofillSuggestion) {
+                selectAutofillSuggestion(suggestion)
+            }
+
+            override fun onSuggestionsShown(suggestions: List<AddressAutofillSuggestion>) {}
+            override fun onError(e: Exception) {
+                Toast.makeText(this@MainActivity, "Address search error: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        })
         // Initially hide the maneuver view and stop navigation button since there's no route yet
         maneuverView.visibility = View.GONE
         stopNavigationButton.visibility = View.GONE
@@ -377,6 +456,43 @@ class MainActivity : ComponentActivity(), PermissionsListener {
             }
         }
 
+        // Add this in your onCreate() method, after initializing the views:
+        searchCardView.setOnClickListener {
+            // Show the search interface
+            searchResultsView.visibility = View.VISIBLE
+            searchEditText.requestFocus()
+            searchEditText.showKeyboard()
+
+            // Hide the profile button while searching
+            profileButton.visibility = View.GONE
+
+            Toast.makeText(this, "Enter your destination address", Toast.LENGTH_SHORT).show()
+        }
+
+        searchEditText.addTextChangedListener(object : TextWatcher {
+            override fun onTextChanged(text: CharSequence, start: Int, before: Int, count: Int) {
+                if (ignoreNextQueryTextUpdate) {
+                    ignoreNextQueryTextUpdate = false
+                    return
+                }
+
+                val query = Query.create(text.toString())
+                if (query != null) {
+                    lifecycleScope.launchWhenStarted {
+                        addressAutofillUiAdapter.search(query)
+                    }
+                    // Show results when typing
+                    searchResultsView.visibility = View.VISIBLE
+                } else {
+                    // Hide results when empty
+                    searchResultsView.visibility = View.GONE
+                }
+            }
+
+            override fun beforeTextChanged(s: CharSequence, start: Int, count: Int, after: Int) {}
+            override fun afterTextChanged(s: Editable) {}
+        })
+
         // Set up stop navigation button listener
         stopNavigationButton.setOnClickListener {
             stopNavigation()
@@ -385,6 +501,20 @@ class MainActivity : ComponentActivity(), PermissionsListener {
         profileButton.setOnClickListener {
             // Your profile button logic
         }
+    }
+
+    fun View.showKeyboard() {
+        if (requestFocus()) {
+            post {
+                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+                imm?.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
+            }
+        }
+    }
+
+    fun View.hideKeyboard() {
+        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
+        imm?.hideSoftInputFromWindow(windowToken, 0)
     }
 
     // Add a method to stop navigation
@@ -508,6 +638,47 @@ class MainActivity : ComponentActivity(), PermissionsListener {
         )
     }
 
+    private fun selectAutofillSuggestion(suggestion: AddressAutofillSuggestion) {
+        lifecycleScope.launchWhenStarted {
+            val response = addressAutofill.select(suggestion)
+            response.onValue { result ->
+                handleAutofillResult(result)
+            }.onError {
+                Toast.makeText(this@MainActivity, "Failed to get address details", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    private fun handleAutofillResult(result: AddressAutofillResult) {
+        // Update the map with the selected location
+        destinationPoint = result.suggestion.coordinate
+        addMarkerAtPoint(destinationPoint!!)
+
+        // Update the search field with the formatted address
+        ignoreNextQueryTextUpdate = true
+        searchEditText.setText(result.suggestion.formattedAddress)
+        searchEditText.clearFocus()
+
+        // Hide the search results
+        searchResultsView.isVisible = false
+        searchResultsView.hideKeyboard()
+
+        // If we have an origin point, request a route
+        if (originPoint != null) {
+            requestRoute()
+        } else {
+            Toast.makeText(this, "Please set your current location first", Toast.LENGTH_SHORT).show()
+        }
+
+        // Center the map on the selected location
+        mapView.getMapboxMap().setCamera(
+            CameraOptions.Builder()
+                .center(result.suggestion.coordinate)
+                .zoom(14.0)
+                .build()
+        )
+    }
+
     private fun markLocationPoint(){
         // Set up touch listener for the map
         mapView.getMapboxMap().addOnMapClickListener { point ->
@@ -598,15 +769,6 @@ class MainActivity : ComponentActivity(), PermissionsListener {
             // Handle permission denial
             // You might want to show a toast or dialog explaining limitations
         }
-    }
-
-    override fun onRequestPermissionsResult(
-        requestCode: Int,
-        permissions: Array<String>,
-        grantResults: IntArray
-    ) {
-        permissionsManager.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
     }
 }
 

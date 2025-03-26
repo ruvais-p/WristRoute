@@ -26,11 +26,11 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
 
-    <!-- Search bar below the ManeuverView - Updated to AutoCompleteTextView -->
+    <!-- Enhanced Search Card with Address Autofill -->
     <androidx.cardview.widget.CardView
         android:id="@+id/searchCardView"
         android:layout_width="0dp"
-        android:layout_height="48dp"
+        android:layout_height="wrap_content"
         android:layout_marginStart="16dp"
         android:layout_marginTop="16dp"
         android:layout_marginEnd="16dp"
@@ -40,27 +40,64 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toBottomOf="@+id/maneuverView">
 
-        <androidx.appcompat.widget.AppCompatAutoCompleteTextView
-            android:id="@+id/searchEditText"
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:background="@android:color/transparent"
-            android:hint="Search..."
-            android:padding="12dp"
-            android:paddingStart="16dp"
-            android:paddingEnd="16dp"
-            android:textColorHint="#757575"
-            android:textSize="16sp"
-            android:drawableStart="@drawable/search_icon"
-            android:drawablePadding="8dp"
-            android:imeOptions="actionSearch"
-            android:inputType="text"
-            android:maxLines="1"
-            android:singleLine="true"
-            android:dropDownAnchor="@id/searchCardView" />
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="8dp">
+
+            <!-- Main Search Input -->
+            <androidx.appcompat.widget.AppCompatAutoCompleteTextView
+                android:id="@+id/searchEditText"
+                android:layout_width="match_parent"
+                android:layout_height="48dp"
+                android:background="@drawable/card_background"
+                android:hint="Search destination..."
+                android:padding="12dp"
+                android:drawableStart="@drawable/search_icon"
+                android:drawablePadding="8dp"
+                android:imeOptions="actionSearch"
+                android:inputType="text"
+                android:maxLines="1"
+                android:singleLine="true" />
+
+            <!-- Address Details (Initially Hidden) -->
+            <LinearLayout
+                android:id="@+id/addressDetailsLayout"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone"
+                tools:visibility="visible">
+
+                <EditText
+                    android:id="@+id/address_city"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="City"
+                    android:inputType="textPostalAddress"
+                    android:autofillHints="postalAddress" />
+
+                <EditText
+                    android:id="@+id/address_state"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="State"
+                    android:inputType="textPostalAddress"
+                    android:autofillHints="postalAddress" />
+
+                <EditText
+                    android:id="@+id/address_zip"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="ZIP Code"
+                    android:inputType="number"
+                    android:autofillHints="postalCode" />
+            </LinearLayout>
+        </LinearLayout>
     </androidx.cardview.widget.CardView>
 
-    <!-- Profile button aligned with search bar but below ManeuverView -->
+    <!-- Profile Button -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/profileButton"
         android:layout_width="wrap_content"
@@ -75,7 +112,22 @@
         app:srcCompat="@drawable/user_icon"
         app:tint="@null" />
 
-    <!-- Stop Navigation Button (NEW) -->
+    <!-- Search Results View (Similar to Autofill Layout) -->
+    <com.mapbox.search.ui.view.SearchResultsView
+        android:id="@+id/search_results_view"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="8dp"
+        android:background="@drawable/card_background"
+        android:elevation="4dp"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@+id/searchCardView"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toTopOf="@+id/stopNavigationButton"/>
+
+    <!-- Existing Navigation Buttons (Unchanged from Previous Layout) -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/stopNavigationButton"
         android:layout_width="wrap_content"
@@ -89,7 +141,6 @@
         app:srcCompat="@drawable/stop_navigation_icon"
         app:tint="@null" />
 
-    <!-- Bottom action buttons (unchanged) -->
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/markButton"
         android:layout_width="wrap_content"
