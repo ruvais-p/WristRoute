@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -65,8 +66,10 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.view.inputmethod.InputMethodManager
 import android.widget.AutoCompleteTextView
+import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import com.mapbox.maps.CameraOptions
@@ -205,7 +208,7 @@ class MainActivity : ComponentActivity(), PermissionsListener {
 
                 // Display the toast
                 runOnUiThread {
-                    Toast.makeText(this@MainActivity, toastMessage, Toast.LENGTH_SHORT).show()
+                    createNavigationUpdateNotification(toastMessage)
                 }
             }
         }
@@ -295,6 +298,95 @@ class MainActivity : ComponentActivity(), PermissionsListener {
             }
         }
     }
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val name = "Navigation Updates"
+            val descriptionText = "Displays turn-by-turn navigation instructions"
+            val importance = NotificationManager.IMPORTANCE_LOW
+            val channel = NotificationChannel(NAVIGATION_CHANNEL_ID, name, importance).apply {
+                description = descriptionText
+            }
+
+            val notificationManager: NotificationManager =
+                getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.createNotificationChannel(channel)
+        }
+    }
+
+    private fun createNavigationUpdateNotification(message: String) {
+        try {
+            // Ensure notification channel is created
+            createNotificationChannel()
+
+            // Check for notification permission on Android 13+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                if (ContextCompat.checkSelfPermission(this,
+                        android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                    // Permission not granted - don't crash, just return
+                    Log.d("MainActivity", "Notification permission not granted")
+                    return
+                }
+            }
+
+            val builder = NotificationCompat.Builder(this, NAVIGATION_CHANNEL_ID)
+                .setContentTitle("Navigation Update")
+                .setContentText(message)
+                .setSmallIcon(R.drawable.baseline_assistant_navigation_24)// Make sure you have this icon
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
+                .setAutoCancel(true)
+
+            with(NotificationManagerCompat.from(this)) {
+                try {
+                    notify(NAVIGATION_NOTIFICATION_ID, builder.build())
+                } catch (e: SecurityException) {
+                    Log.e("MainActivity", "Failed to show notification: ${e.message}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Notification creation failed: ${e.message}")
+        }
+    }
+
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            // Only request if we don't already have permission
+            if (ContextCompat.checkSelfPermission(this,
+                    android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
+                    NOTIFICATION_PERMISSION_REQUEST_CODE
+                )
+            }
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        when (requestCode) {
+            NOTIFICATION_PERMISSION_REQUEST_CODE -> {
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    // Permission granted - you can now show notifications
+                    Log.d("MainActivity", "Notification permission granted")
+                } else {
+                    // Permission denied - handle accordingly
+                    Log.d("MainActivity", "Notification permission denied")
+                }
+            }
+        }
+    }
+
+    companion object {
+        private const val NAVIGATION_CHANNEL_ID = "navigation_channel"
+        private const val NAVIGATION_NOTIFICATION_ID = 1001
+        private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 1002
+    }
+
 
     // Define distance formatter options
     // Replace your existing distance formatter definition with this:
@@ -355,6 +447,8 @@ class MainActivity : ComponentActivity(), PermissionsListener {
         stopNavigationButton = findViewById(R.id.stopNavigationButton) // Initialize the new button
         searchCardView = findViewById(R.id.searchCardView)
         maneuverView = findViewById(R.id.maneuverView)
+
+        createNotificationChannel()
 
         searchResultsView.initialize(
             SearchResultsView.Configuration(
