@@ -1,4 +1,4 @@
-# 🚀 Wrist Route – Navigate Smarter, Right from Your Wrist! ⌚📍  
+# Wrist Route 
 
 **Wrist Route** is an Android application that enables real-time **turn-by-turn navigation** on smartwatches via notifications. It’s designed for users whose smartwatches **lack built-in GPS navigation**, providing seamless guidance without the need to constantly check their phones.  
 
