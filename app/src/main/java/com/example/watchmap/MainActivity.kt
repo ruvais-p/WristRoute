@@ -590,6 +590,9 @@ class MainActivity : ComponentActivity(), PermissionsListener {
         maneuverView.visibility = View.GONE
         stopNavigationButton.visibility = View.GONE
 
+        // Clear the search text
+        searchEditText.text.clear()
+
         // Show search and profile elements
         searchCardView.visibility = View.VISIBLE
         profileButton.visibility = View.VISIBLE
@@ -823,7 +826,6 @@ class MainActivity : ComponentActivity(), PermissionsListener {
         if (!mapView.location.enabled) {
             // First click: Enable location component
             enableLocationComponent()
-            Toast.makeText(this, "Location enabled. Click again to set origin.", Toast.LENGTH_SHORT).show()
             return
         }
 

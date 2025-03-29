@@ -3,4 +3,5 @@
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
     <color name="mapbox_blue">#3D91FF</color>
+    <color name="splash_color">#C52222</color>
 </resources>
