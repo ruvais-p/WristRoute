@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Base application theme -->
+    <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
+        <!-- Your base theme attributes -->
+    </style>
+    <style name="MapboxCustomManeuverTurnIconStyle" parent="MapboxStyleTurnIconManeuver">
+        <item name="maneuverTurnIconColor">#F85555</item>
+        <item name="maneuverTurnIconShadowColor">#903D3D</item>
+    </style>
+    <!-- Custom Mapbox Maneuver styles -->
+    <style name="MapboxCustomManeuverStyle" parent="MapboxStyleManeuverView">
+        <item name="maneuverViewBackgroundColor">#292D32</item>
+        <item name="subManeuverViewBackgroundColor">#26282A</item>
+        <item name="upcomingManeuverViewBackgroundColor">#26282A</item>
+        <item name="maneuverViewIconStyle">@style/MapboxCustomManeuverTurnIconStyle</item>
+        <item name="laneGuidanceManeuverIconStyle">@style/MapboxCustomManeuverTurnIconStyle</item>
+    </style>
+
+    <!-- Other custom styles -->
+</resources>

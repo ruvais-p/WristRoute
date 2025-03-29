@@ -66,15 +66,15 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.view.inputmethod.InputMethodManager
 import android.widget.AutoCompleteTextView
-import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
+import com.mapbox.api.directions.v5.models.Bearing
 import com.mapbox.maps.CameraOptions
+import com.mapbox.navigation.ui.maps.route.line.model.RouteLineColorResources
 import com.mapbox.search.autofill.AddressAutofill
-import com.mapbox.search.autofill.AddressAutofillOptions
 import com.mapbox.search.autofill.AddressAutofillResult
 import com.mapbox.search.autofill.AddressAutofillSuggestion
 import com.mapbox.search.autofill.Query
@@ -82,6 +82,7 @@ import com.mapbox.search.ui.adapter.autofill.AddressAutofillUiAdapter
 import com.mapbox.search.ui.view.CommonSearchViewConfiguration
 import com.mapbox.search.ui.view.DistanceUnitType
 import com.mapbox.search.ui.view.SearchResultsView
+import androidx.core.graphics.toColorInt
 
 class MainActivity : ComponentActivity(), PermissionsListener {
     private lateinit var mapView: MapView
@@ -104,7 +105,6 @@ class MainActivity : ComponentActivity(), PermissionsListener {
     private var destinationPoint: Point? = null
     private var destinationMarker: CircleAnnotationManager? = null
     private var originPoint: Point? = null
-    private var currentRoute: DirectionsRoute? = null
     private lateinit var routeLineApi: MapboxRouteLineApi
     private lateinit var routeLineView: MapboxRouteLineView
     private lateinit var routeArrowApi: MapboxRouteArrowApi
@@ -133,99 +133,95 @@ class MainActivity : ComponentActivity(), PermissionsListener {
         onInitialize = this::initNavigation
     )
 
+    // Helper function to convert maneuver modifier to human-readable direction
     private var lastManeuverInstruction: String? = null
     private var lastDistanceRemaining: Float? = null
     private val DISTANCE_UPDATE_THRESHOLD = 50f
 
     private val routeProgressObserver = object : RouteProgressObserver {
         override fun onRouteProgressChanged(routeProgress: RouteProgress) {
-            // Update the maneuver view with the current progress
             val maneuvers = maneuverApi.getManeuvers(routeProgress)
             maneuverView.renderManeuvers(maneuvers)
 
-            // Add this code to render the route arrow
+            // Render route arrow and line
             mapView.getMapboxMap().getStyle()?.let { style ->
-                // Use the route progress to render the arrow
                 val arrowResult = routeArrowApi.addUpcomingManeuverArrow(routeProgress)
-
-                // Render the arrow on the map
                 routeArrowView.renderRouteArrow(style, arrowResult)
 
-                // Update the route line with progress
                 routeLineApi.updateWithRouteProgress(routeProgress) { result ->
                     routeLineView.renderRouteLineUpdate(style, result)
                 }
             }
 
-            // Extract navigation details
+            // Current step details
             val currentStepProgress = routeProgress.currentLegProgress?.currentStepProgress
-            val currentStep = currentStepProgress?.step
-            val currentManeuverInstruction = currentStep?.maneuver()?.instruction()
             val distanceRemaining = currentStepProgress?.distanceRemaining
+
+            val currentLegProgress = routeProgress.currentLegProgress
+            val nextStep = currentLegProgress?.upcomingStep
+
+            // Next step details
+            val nextStepInstruction = nextStep?.maneuver()?.instruction()
+            val nextStepDistance = nextStep?.distance()?.toFloat() ?: 0f
+            val nextStepModifier = nextStep?.maneuver()?.modifier()?.toString()
+
+            // Total route details
             val totalDistanceRemaining = routeProgress.distanceRemaining
             val totalDurationRemaining = routeProgress.durationRemaining
 
-            // Get the current and next maneuver information
-            val currentManeuverModifier = currentStep?.maneuver()?.modifier()
-            val currentDirectionText = getDirectionText(currentManeuverModifier)
+            // Determine if an update is needed
+            val shouldUpdate =
+                (nextStepInstruction != null) && (
+                        (nextStepInstruction != lastManeuverInstruction) ||
+                                (distanceRemaining != null && lastDistanceRemaining != null &&
+                                        Math.abs(distanceRemaining - lastDistanceRemaining!!) > DISTANCE_UPDATE_THRESHOLD)
+                        )
 
-            // Attempt to get the next step's instruction
-            val nextStepInstruction = routeProgress.currentLegProgress?.upcomingStep?.maneuver()?.instruction()
-            val nextStepDistance = routeProgress.currentLegProgress?.upcomingStep?.distance()
-
-            if ((currentManeuverInstruction != lastManeuverInstruction && currentManeuverInstruction != null) ||
-                (distanceRemaining != null && lastDistanceRemaining != null &&
-                        Math.abs(distanceRemaining - lastDistanceRemaining!!) > DISTANCE_UPDATE_THRESHOLD)) {
-
-                lastManeuverInstruction = currentManeuverInstruction
+            if (shouldUpdate) {
+                lastManeuverInstruction = nextStepInstruction
                 lastDistanceRemaining = distanceRemaining
 
-                // Construct the toast message
-                val toastMessage = buildString {
-                    // Add current driving direction
-                    if (currentDirectionText.isNotEmpty()) {
-                        append("Drive $currentDirectionText. ")
+                // Prepare detailed navigation message
+                val navigationMessage = buildString {
+                    // Distance to current maneuver
+                    append("${formatDistanceCompact(distanceRemaining ?: 0f)} | ")
+
+                    // Next maneuver instruction
+                    nextStepInstruction?.let {
+                        append("$it | ")
                     }
 
-                    // Add current step instruction
-                    if (currentManeuverInstruction != null) {
-                        append("${formatDistanceCompact(distanceRemaining ?: 0f)} ${currentManeuverInstruction}. ")
+                    // Next maneuver direction
+                    val nextDirectionText = getDirectionText(nextStepModifier)
+                    if (nextDirectionText.isNotEmpty()) {
+                        append("$nextDirectionText | ")
                     }
 
-                    // Add next step instruction if available
-                    if (nextStepInstruction != null && nextStepDistance != null) {
-                        append("Next: ${formatDistanceCompact(nextStepDistance.toFloat())} $nextStepInstruction. ")
-                    }
-
-                    // Add remaining route details
-                    totalDistanceRemaining?.let {
-                        append("${formatDistanceCompact(it)} remaining ")
-                    }
-                    totalDurationRemaining?.let {
-                        append("${formatDurationCompact(it)}")
-                    }
+                    // Remaining route details
+                    append("${formatDistanceCompact(totalDistanceRemaining)} | ")
+                    append("${formatDurationCompact(totalDurationRemaining)}")
                 }
 
-                // Display the toast
+                // Display the notification
                 runOnUiThread {
-                    createNavigationUpdateNotification(toastMessage)
+                    createNavigationUpdateNotification(navigationMessage)
                 }
             }
         }
     }
 
-    // Helper function to convert maneuver modifier to human-readable direction
+    // Direction text mapping function using your existing implementation
     private fun getDirectionText(modifier: String?): String {
         return when (modifier) {
-            // Basic directions
-            "uturn" -> "U-Turn"
-            "sharp right" -> "Sharp Right"
-            "right" -> "Right"
-            "slight right" -> "Slight Right"
-            "straight" -> "Straight"
-            "slight left" -> "Slight Left"
-            "left" -> "Left"
-            "sharp left" -> "Sharp Left"
+            // Basic directions with "Turn" prefix
+            "uturn" -> "Turn U-Turn"
+            "sharp right" -> "Turn Sharp Right"
+            "right" -> "Turn Right"
+            "slight right" -> "Turn Slight Right"
+            "straight" -> "Continue Straight"
+            "slight left" -> "Turn Slight Left"
+            "left" -> "Turn Left"
+            "sharp left" -> "Turn Sharp Left"
 
             // Additional directions
             "continue" -> "Continue"
@@ -243,24 +239,24 @@ class MainActivity : ComponentActivity(), PermissionsListener {
             "end of road" -> "End of Road"
 
             // Alternative forms
-            "turn-uturn" -> "U-Turn"
-            "turn-sharp-right" -> "Sharp Right"
-            "turn-right" -> "Right"
-            "turn-slight-right" -> "Slight Right"
-            "turn-straight" -> "Straight"
-            "turn-slight-left" -> "Slight Left"
-            "turn-left" -> "Left"
-            "turn-sharp-left" -> "Sharp Left"
+            "turn-uturn" -> "Turn U-Turn"
+            "turn-sharp-right" -> "Turn Sharp Right"
+            "turn-right" -> "Turn Right"
+            "turn-slight-right" -> "Turn Slight Right"
+            "turn-straight" -> "Continue Straight"
+            "turn-slight-left" -> "Turn Slight Left"
+            "turn-left" -> "Turn Left"
+            "turn-sharp-left" -> "Turn Sharp Left"
 
             // Uppercase alternatives
-            "UTURN" -> "U-Turn"
-            "SHARP_RIGHT" -> "Sharp Right"
-            "RIGHT" -> "Right"
-            "SLIGHT_RIGHT" -> "Slight Right"
-            "STRAIGHT" -> "Straight"
-            "SLIGHT_LEFT" -> "Slight Left"
-            "LEFT" -> "Left"
-            "SHARP_LEFT" -> "Sharp Left"
+            "UTURN" -> "Turn U-Turn"
+            "SHARP_RIGHT" -> "Turn Sharp Right"
+            "RIGHT" -> "Turn Right"
+            "SLIGHT_RIGHT" -> "Turn Slight Right"
+            "STRAIGHT" -> "Continue Straight"
+            "SLIGHT_LEFT" -> "Turn Slight Left"
+            "LEFT" -> "Turn Left"
+            "SHARP_LEFT" -> "Turn Sharp Left"
 
             // Possible variants
             "bear right" -> "Bear Right"
@@ -268,7 +264,7 @@ class MainActivity : ComponentActivity(), PermissionsListener {
             "continue straight" -> "Continue Straight"
             "keep right" -> "Keep Right"
             "keep left" -> "Keep Left"
-            "make u-turn" -> "Make U-Turn"
+            "make u-turn" -> "Turn U-Turn"
             "destination" -> "Destination"
             "destination right" -> "Destination on Right"
             "destination left" -> "Destination on Left"
@@ -329,10 +325,10 @@ class MainActivity : ComponentActivity(), PermissionsListener {
             }
 
             val builder = NotificationCompat.Builder(this, NAVIGATION_CHANNEL_ID)
-                .setContentTitle("Navigation Update")
+                .setContentTitle("Wrist Route")
                 .setContentText(message)
-                .setSmallIcon(R.drawable.baseline_assistant_navigation_24)// Make sure you have this icon
-                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setSmallIcon(R.drawable.baseline_assistant_navigation_24)
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                 .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
                 .setAutoCancel(true)
 
@@ -348,19 +344,6 @@ class MainActivity : ComponentActivity(), PermissionsListener {
         }
     }
 
-    private fun requestNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            // Only request if we don't already have permission
-            if (ContextCompat.checkSelfPermission(this,
-                    android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(
-                    this,
-                    arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
-                    NOTIFICATION_PERMISSION_REQUEST_CODE
-                )
-            }
-        }
-    }
 
     override fun onRequestPermissionsResult(
         requestCode: Int,
@@ -449,6 +432,8 @@ class MainActivity : ComponentActivity(), PermissionsListener {
         maneuverView = findViewById(R.id.maneuverView)
 
         createNotificationChannel()
+        handleLocationButtonClick()
+        handleLocationButtonClick()
 
         searchResultsView.initialize(
             SearchResultsView.Configuration(
@@ -499,42 +484,7 @@ class MainActivity : ComponentActivity(), PermissionsListener {
 
         // Set up button click listeners
         locationButton.setOnClickListener {
-            // Check if location component is enabled first
-            if (mapView.location.enabled) {
-                // Get the current device location using the correct method
-                val locationProvider = LocationServiceFactory.getOrCreate()
-                    .getDeviceLocationProvider(LocationProviderRequest.Builder().build())
-
-                if (locationProvider.isValue) {
-                    locationProvider.value?.getLastLocation { location ->
-                        if (location != null) {
-                            // Store the current location in originPoint
-                            originPoint = Point.fromLngLat(location.longitude, location.latitude)
-                            Log.d("MainActivity", "Origin point set to: ${originPoint?.latitude()}, ${originPoint?.longitude()}")
-                            Toast.makeText(this, "Origin point set!", Toast.LENGTH_SHORT).show()
-                            // Center map on current location with zoom
-                            mapView.viewport.transitionTo(
-                                targetState = mapView.viewport.makeFollowPuckViewportState(
-                                    options = FollowPuckViewportStateOptions.Builder()
-                                        .zoom(15.0) // You can adjust zoom level as needed
-                                        .pitch(0.0)  // Looking straight down
-                                        .build()
-                                ),
-                                transition = mapView.viewport.makeImmediateViewportTransition()
-                            )
-                        } else {
-                            Toast.makeText(this, "Unable to retrieve current location", Toast.LENGTH_SHORT).show()
-                        }
-                    }
-                } else {
-                    Toast.makeText(this, "Location provider not available", Toast.LENGTH_SHORT).show()
-                }
-            } else {
-                // If location isn't enabled yet, enable it first
-                enableLocationComponent()
-                // Show a toast indicating location is being enabled
-                Toast.makeText(this, "Enabling location...", Toast.LENGTH_SHORT).show()
-            }
+            handleLocationButtonClick()
         }
 
         markButton.setOnClickListener {
@@ -657,9 +607,17 @@ class MainActivity : ComponentActivity(), PermissionsListener {
             return
         }
 
+        val routeLineColorResources = RouteLineColorResources.Builder()
+            .routeDefaultColor("#000000".toColorInt())
+            .alternativeRouteDefaultColor("#424242".toColorInt())   // Dark gray for alternatives
+            .routeCasingColor("#212121".toColorInt())
+            .routeClosureColor("#C52222".toColorInt())// Very dark gray for outline
+            .build()
+
+
         val routeOptions = RouteOptions.builder()
             .applyDefaultNavigationOptions()
-            .profile(DirectionsCriteria.PROFILE_DRIVING_TRAFFIC)
+            .profile(DirectionsCriteria.PROFILE_WALKING)
             .alternatives(true)
             .annotationsList(
                 listOf(
@@ -669,7 +627,21 @@ class MainActivity : ComponentActivity(), PermissionsListener {
                 )
             )
             .coordinatesList(listOf(originPoint, destinationPoint))
+            .bearingsList(
+                listOf(
+                    Bearing.builder()
+                        .degrees(45.0)
+                        .build(),
+                    null
+                )
+            )
             .build()
+
+        val routeLineViewOptions = MapboxRouteLineViewOptions.Builder(this)
+            .routeLineColorResources(routeLineColorResources)
+            .routeLineBelowLayerId("road-label")
+            .build()
+        routeLineView = MapboxRouteLineView(routeLineViewOptions)
 
         mapboxNavigation.requestRoutes(routeOptions,
             object : NavigationRouterCallback {
@@ -780,11 +752,6 @@ class MainActivity : ComponentActivity(), PermissionsListener {
                 addMarkerAtPoint(point)
                 destinationPoint = point
                 isMarkingEnabled = false // Disable marking mode after marking a point
-                Toast.makeText(
-                    this,
-                    "Marked location: Lat: ${point.latitude()}, Lng: ${point.longitude()}",
-                    Toast.LENGTH_SHORT
-                ).show()
 
                 // Request route after setting the destination
                 if (originPoint != null) {
@@ -834,9 +801,9 @@ class MainActivity : ComponentActivity(), PermissionsListener {
             val circleOptions = CircleAnnotationOptions()
                 .withPoint(point)
                 .withCircleRadius(8.0)
-                .withCircleColor("#FF0000") // Red circle
+                .withCircleColor("#C52222") // Red circle
                 .withCircleStrokeWidth(2.0)
-                .withCircleStrokeColor("#FFFFFF") // White stroke
+                .withCircleStrokeColor("#292D32") // White stroke
 
             circleManager.create(circleOptions)
 
@@ -848,6 +815,48 @@ class MainActivity : ComponentActivity(), PermissionsListener {
         } catch (e: Exception) {
             Log.e("MainActivity", "Error adding marker: ${e.message}", e)
             Toast.makeText(this, "Error marking location: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun handleLocationButtonClick() {
+        // Check if location component is already enabled
+        if (!mapView.location.enabled) {
+            // First click: Enable location component
+            enableLocationComponent()
+            Toast.makeText(this, "Location enabled. Click again to set origin.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Get the current device location
+        val locationProvider = LocationServiceFactory.getOrCreate()
+            .getDeviceLocationProvider(LocationProviderRequest.Builder().build())
+
+        if (locationProvider.isValue) {
+            locationProvider.value?.getLastLocation { location ->
+                if (location != null) {
+                    // Store the current location in originPoint
+                    originPoint = Point.fromLngLat(location.longitude, location.latitude)
+                    Log.d("MainActivity", "Origin point set to: ${originPoint?.latitude()}, ${originPoint?.longitude()}")
+
+                    // Center map on current location with zoom
+                    mapView.viewport.transitionTo(
+                        targetState = mapView.viewport.makeFollowPuckViewportState(
+                            options = FollowPuckViewportStateOptions.Builder()
+                                .zoom(15.0)
+                                .pitch(0.0)
+                                .build()
+                        ),
+                        transition = mapView.viewport.makeImmediateViewportTransition()
+                    )
+
+                    // Show confirmation toast
+                    Toast.makeText(this, "Origin point set!", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "Unable to retrieve current location", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } else {
+            Toast.makeText(this, "Location provider not available", Toast.LENGTH_SHORT).show()
         }
     }
 
